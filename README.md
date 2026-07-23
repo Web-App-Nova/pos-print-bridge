@@ -29,6 +29,44 @@ npm start
 
 Default URL: `http://127.0.0.1:9247`
 
+## Auto-start on boot / login (one-time setup)
+
+Run **once** on each billing PC. After this, the bridge starts automatically when the user logs in (even after restart or shutdown).
+
+```bash
+cd pos-print-bridge
+npm run setup:autostart
+```
+
+| OS | What it installs |
+|----|------------------|
+| **macOS** | LaunchAgent (`com.pos.print-bridge`) — starts at login, restarts if it crashes |
+| **Windows** | Scheduled Task (`POS Print Bridge`) — starts at user logon |
+| **Linux** | systemd user service (`pos-print-bridge`) — starts at login |
+
+To remove auto-start:
+
+```bash
+npm run remove:autostart
+```
+
+### macOS logs
+
+```
+~/Library/Logs/pos-print-bridge/out.log
+~/Library/Logs/pos-print-bridge/err.log
+```
+
+### Manual platform scripts (optional)
+
+```bash
+# macOS
+bash scripts/macos-install-autostart.sh "$(pwd)"
+
+# Windows (PowerShell as normal user)
+powershell -ExecutionPolicy Bypass -File scripts/windows-install-autostart.ps1 -BridgeRoot "C:\path\to\pos-print-bridge"
+```
+
 ## API
 
 | Method | Path | Description |
@@ -65,19 +103,6 @@ Or base64 ESC/POS:
 | `POS_PRINT_BRIDGE_HOST` | `127.0.0.1` | Bind address |
 | `POS_PRINT_TIMEOUT_MS` | `8000` | Print socket timeout |
 | `POS_DISCOVERY_TIMEOUT_MS` | `220` | Per-host probe timeout |
-
-## Auto-start (optional)
-
-**macOS** — save as `~/Library/LaunchAgents/com.pos.print-bridge.plist` and load with `launchctl`.
-
-**Windows** — add a shortcut to `npm start` in the Startup folder, or use PM2:
-
-```bash
-npm install -g pm2
-pm2 start build/index.js --name pos-print-bridge
-pm2 save
-pm2 startup
-```
 
 ## Billing app
 

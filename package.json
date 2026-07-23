@@ -12,7 +12,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node build/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "setup:autostart": "node scripts/setup-autostart.mjs",
+    "remove:autostart": "node scripts/remove-autostart.mjs"
   },
   "engines": {
     "node": ">=18"
