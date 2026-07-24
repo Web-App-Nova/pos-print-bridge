@@ -2,8 +2,8 @@
 import cors from 'cors';
 import express from 'express';
 import { bridgeStatus, DEFAULT_PORT, HOST } from './config.js';
-import { discoverNetworkPrinters } from './discover.js';
-import { sendRawPrint, type PrintJobRequest } from './print.js';
+import { discoverAllPrinters } from './discover-all.js';
+import { sendPrintJob, type PrintJobRequest } from './print.js';
 
 const app = express();
 app.use(cors({ origin: true }));
@@ -13,9 +13,9 @@ app.get('/status', (_req, res) => {
   res.json(bridgeStatus());
 });
 
-app.get('/discover', async (_req, res, next) => {
+app.get('/discover', async (_req, res) => {
   try {
-    const result = await discoverNetworkPrinters();
+    const result = await discoverAllPrinters();
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Discovery failed';
@@ -26,7 +26,7 @@ app.get('/discover', async (_req, res, next) => {
 app.post('/print', async (req, res, next) => {
   try {
     const body = req.body as PrintJobRequest;
-    const result = await sendRawPrint(body);
+    const result = await sendPrintJob(body);
     res.json(result);
   } catch (error) {
     next(error);

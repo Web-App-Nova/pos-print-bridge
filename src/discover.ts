@@ -105,14 +105,19 @@ export async function discoverNetworkPrinters(): Promise<DiscoveryResult> {
       const openPorts = checks.filter((check) => check.open).map((check) => check.port);
       if (!openPorts.length) return null;
 
+      // IPP/CUPS on 631 accepts TCP but cannot print raw ESC/POS — require RAW 9100 or LPD 515.
+      const preferredPort =
+        openPorts.find((port) => port === 9100) ||
+        openPorts.find((port) => port === 515) ||
+        null;
+      if (!preferredPort) return null;
+
       let hostname = '';
       try {
         hostname = (await dns.promises.reverse(host))[0] || '';
       } catch {
         // Reverse DNS is optional.
       }
-
-      const preferredPort = openPorts.find((port) => port === 9100) || openPorts[0];
       return {
         id: `network:${host}`,
         name: hostname || `Network printer ${host}`,
