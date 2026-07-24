@@ -72,7 +72,7 @@ powershell -ExecutionPolicy Bypass -File scripts/windows-install-autostart.ps1 -
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/status` | Bridge health, version, platform |
-| GET | `/discover` | Scan local private LAN for printers |
+| GET | `/discover` | List all printers on this PC (USB, Bluetooth, Wi‑Fi, LAN) + LAN scan |
 | POST | `/print` | Send raw bytes to `host:port` |
 
 ### POST /print body
