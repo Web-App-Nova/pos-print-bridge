@@ -73,7 +73,21 @@ powershell -ExecutionPolicy Bypass -File scripts/windows-install-autostart.ps1 -
 |--------|------|-------------|
 | GET | `/status` | Bridge health, version, platform |
 | GET | `/discover` | List all printers on this PC (USB, Bluetooth, Wi‑Fi, LAN) + LAN scan |
-| POST | `/print` | Send raw bytes to `host:port` |
+| GET | `/queues` | System printer queues + pending OS job counts |
+| GET | `/queues/:name` | One queue state + jobs |
+| GET | `/queues/:name/jobs` | Jobs waiting in that system queue |
+| DELETE | `/queues/:name/jobs/:jobId` | Cancel a stuck OS job |
+| POST | `/print` | Print and **confirm** job left the OS queue (or LAN TCP OK) |
+
+### Print confirmation
+
+`POST /print` no longer means “accepted by OS only”. For USB/system queues the bridge:
+
+1. Submits the job and captures the OS job id  
+2. Polls the system queue (up to 40s) until the job is gone (= printed)  
+3. If the printer is offline/paused or time runs out → **cancels** the OS job and returns `printed: false` (HTTP 422)
+
+Success body includes `printed: true`, `status: "printed"`. Failure includes `printed: false`, `status: "failed"`, `message`, and optional `os_job_id` / `queue_jobs`.
 
 ### POST /print body
 
@@ -101,7 +115,9 @@ Or base64 ESC/POS:
 |----------|---------|-------------|
 | `POS_PRINT_BRIDGE_PORT` | `9247` | Local HTTP port |
 | `POS_PRINT_BRIDGE_HOST` | `127.0.0.1` | Bind address |
-| `POS_PRINT_TIMEOUT_MS` | `8000` | Print socket timeout |
+| `POS_PRINT_TIMEOUT_MS` | `8000` | Submit / TCP timeout |
+| `POS_PRINT_CONFIRM_TIMEOUT_MS` | `40000` | Wait for OS job to leave queue |
+| `POS_PRINT_CONFIRM_POLL_MS` | `1000` | Queue poll interval |
 | `POS_DISCOVERY_TIMEOUT_MS` | `220` | Per-host probe timeout |
 
 ## Billing app

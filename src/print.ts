@@ -12,6 +12,12 @@ import {
   resolveCupsDeviceUri,
   sendDarwinUsbBackendPrint,
 } from './print-darwin.js';
+import {
+  confirmQueuePrint,
+  listQueueJobs,
+  parseCupsSubmitJobId,
+  type ConfirmPrintResult,
+} from './queue.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -30,11 +36,27 @@ export interface PrintJobRequest {
 
 export interface PrintJobResult {
   ok: boolean;
+  printed: boolean;
+  status: 'printed' | 'failed';
   method: 'raw-tcp' | 'cups-queue' | 'cups-usb-backend' | 'windows-queue';
   target: string;
   bytes_sent: number;
   host?: string;
   port?: number;
+  os_job_id?: string | null;
+  queue_jobs?: number;
+  printer_state?: string;
+  message: string;
+}
+
+export class PrintConfirmError extends Error {
+  result: PrintJobResult;
+
+  constructor(result: PrintJobResult) {
+    super(result.message);
+    this.name = 'PrintConfirmError';
+    this.result = result;
+  }
 }
 
 function decodePayload(body: PrintJobRequest): Buffer {
@@ -64,6 +86,25 @@ function isUsbLike(job: PrintJobRequest): boolean {
   );
 }
 
+function withConfirm(
+  base: Omit<PrintJobResult, 'printed' | 'status' | 'message' | 'ok'> & {
+    ok?: boolean;
+    message?: string;
+  },
+  confirm: ConfirmPrintResult,
+): PrintJobResult {
+  return {
+    ...base,
+    ok: confirm.printed,
+    printed: confirm.printed,
+    status: confirm.status,
+    message: confirm.message,
+    os_job_id: confirm.os_job_id ?? base.os_job_id ?? null,
+    queue_jobs: confirm.queue_jobs,
+    printer_state: confirm.printer_state,
+  };
+}
+
 export function sendRawTcpPrint(
   host: string,
   port: number,
@@ -75,7 +116,9 @@ export function sendRawTcpPrint(
     );
   }
   if (port !== 9100 && port !== 515) {
-    throw new Error(`Port ${port} is not supported for raw thermal printing. Use USB queue or LAN port 9100.`);
+    throw new Error(
+      `Port ${port} is not supported for raw thermal printing. Use USB queue or LAN port 9100.`,
+    );
   }
 
   return new Promise((resolve, reject) => {
@@ -90,11 +133,14 @@ export function sendRawTcpPrint(
       else {
         resolve({
           ok: true,
+          printed: true,
+          status: 'printed',
           method: 'raw-tcp',
           target: `${host}:${port}`,
           host,
           port,
           bytes_sent: payload.length,
+          message: 'Printed successfully',
         });
       }
     };
@@ -106,14 +152,16 @@ export function sendRawTcpPrint(
         socket.end(() => finish());
       });
     });
-    socket.once('timeout', () => finish(new Error(`Print timed out after ${PRINT_TIMEOUT_MS}ms`)));
+    socket.once('timeout', () =>
+      finish(new Error(`Print timed out after ${PRINT_TIMEOUT_MS}ms`)),
+    );
     socket.once('error', (error) => finish(error));
     socket.connect(port, host);
   });
 }
 
-async function lpStdinRaw(queue: string, payload: Buffer): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
+async function lpStdinRaw(queue: string, payload: Buffer): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const child = spawn(
       'lp',
       [
@@ -131,7 +179,11 @@ async function lpStdinRaw(queue: string, payload: Buffer): Promise<void> {
       ],
       { stdio: ['pipe', 'pipe', 'pipe'] },
     );
+    let stdout = '';
     let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk);
+    });
     child.stderr.on('data', (chunk) => {
       stderr += String(chunk);
     });
@@ -139,7 +191,7 @@ async function lpStdinRaw(queue: string, payload: Buffer): Promise<void> {
     child.stdin.end();
     child.on('error', reject);
     child.on('close', (code) => {
-      if (code === 0) resolve();
+      if (code === 0) resolve(stdout.trim());
       else reject(new Error(stderr.trim() || `lp exited with code ${code}`));
     });
   });
@@ -152,6 +204,8 @@ async function sendCupsQueuePrint(
 ): Promise<PrintJobResult> {
   const file = join(tmpdir(), `pos-print-${Date.now()}.raw`);
   await writeFile(file, payload);
+  let osJobId: string | null = null;
+  let method: PrintJobResult['method'] = 'cups-queue';
 
   try {
     let deviceUri = uri?.trim() || null;
@@ -161,11 +215,16 @@ async function sendCupsQueuePrint(
     if (process.platform === 'darwin' && isUsbDeviceUri(deviceUri)) {
       try {
         await sendDarwinUsbBackendPrint(deviceUri!, file);
+        // Direct USB backend — no OS spooler job. Success = bytes delivered to backend.
         return {
           ok: true,
+          printed: true,
+          status: 'printed',
           method: 'cups-usb-backend',
           target: queue,
           bytes_sent: payload.length,
+          os_job_id: null,
+          message: 'Printed successfully',
         };
       } catch {
         // fall back to lp stdin
@@ -173,9 +232,10 @@ async function sendCupsQueuePrint(
     }
 
     try {
-      await lpStdinRaw(queue, payload);
+      const stdout = await lpStdinRaw(queue, payload);
+      osJobId = parseCupsSubmitJobId(stdout);
     } catch {
-      await execFileAsync(
+      const { stdout } = await execFileAsync(
         'lp',
         [
           '-d',
@@ -190,28 +250,70 @@ async function sendCupsQueuePrint(
         ],
         { timeout: PRINT_TIMEOUT_MS },
       );
+      osJobId = parseCupsSubmitJobId(stdout || '');
+      method = 'cups-queue';
     }
   } finally {
     await unlink(file).catch(() => undefined);
   }
 
-  return { ok: true, method: 'cups-queue', target: queue, bytes_sent: payload.length };
+  const confirm = await confirmQueuePrint({ queue, osJobId });
+  const result = withConfirm(
+    {
+      method,
+      target: queue,
+      bytes_sent: payload.length,
+      os_job_id: osJobId,
+    },
+    confirm,
+  );
+  if (!result.printed) throw new PrintConfirmError(result);
+  return result;
 }
 
 async function sendWindowsQueuePrint(queue: string, payload: Buffer): Promise<PrintJobResult> {
   const file = join(tmpdir(), `pos-print-${Date.now()}.raw`);
   await writeFile(file, payload);
   const script = join(__dirname, '..', 'scripts', 'windows-raw-print.ps1');
+  let osJobId: string | null = null;
   try {
-    await execFileAsync(
+    const { stdout } = await execFileAsync(
       'powershell',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-PrinterName', queue, '-FilePath', file],
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        script,
+        '-PrinterName',
+        queue,
+        '-FilePath',
+        file,
+      ],
       { timeout: PRINT_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
     );
+    try {
+      const parsed = JSON.parse(stdout.trim() || '{}') as { os_job_id?: string };
+      osJobId = parsed.os_job_id ? String(parsed.os_job_id) : null;
+    } catch {
+      osJobId = null;
+    }
   } finally {
     await unlink(file).catch(() => undefined);
   }
-  return { ok: true, method: 'windows-queue', target: queue, bytes_sent: payload.length };
+
+  const confirm = await confirmQueuePrint({ queue, osJobId });
+  const result = withConfirm(
+    {
+      method: 'windows-queue',
+      target: queue,
+      bytes_sent: payload.length,
+      os_job_id: osJobId,
+    },
+    confirm,
+  );
+  if (!result.printed) throw new PrintConfirmError(result);
+  return result;
 }
 
 async function sendQueuePrint(
@@ -232,10 +334,15 @@ export async function sendPrintJob(job: PrintJobRequest): Promise<PrintJobResult
 
   if (
     isUsbLike(job) ||
-    (queue && (job.kind === 'usb' || job.connection_type === 'usb' || job.connection_type === 'bluetooth'))
+    (queue &&
+      (job.kind === 'usb' ||
+        job.connection_type === 'usb' ||
+        job.connection_type === 'bluetooth'))
   ) {
     if (!queue) {
-      throw new Error('USB printer queue missing. Re-select GP-C80250I Plus in Printer Config.');
+      throw new Error(
+        'USB printer queue missing. Re-select GP-C80250I Plus in Printer Config.',
+      );
     }
     return sendQueuePrint(queue, payload, uri);
   }
@@ -257,4 +364,10 @@ export async function sendPrintJob(job: PrintJobRequest): Promise<PrintJobResult
 
 export function sendRawPrint(job: PrintJobRequest & { host: string }): Promise<PrintJobResult> {
   return sendPrintJob(job);
+}
+
+/** Expose queue job count helper for API responses. */
+export async function pendingJobCount(queue: string): Promise<number> {
+  const jobs = await listQueueJobs(queue);
+  return jobs.length;
 }

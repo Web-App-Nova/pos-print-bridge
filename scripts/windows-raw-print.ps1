@@ -24,7 +24,7 @@ public class RawPrinterHelper {
   public static extern bool ClosePrinter(IntPtr hPrinter);
 
   [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
-  public static extern bool StartDocPrinter(IntPtr hPrinter, int level, DOCINFO di);
+  public static extern int StartDocPrinter(IntPtr hPrinter, int level, DOCINFO di);
 
   [DllImport("winspool.drv", SetLastError = true)]
   public static extern bool EndDocPrinter(IntPtr hPrinter);
@@ -38,14 +38,15 @@ public class RawPrinterHelper {
   [DllImport("winspool.drv", SetLastError = true)]
   public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
 
-  public static void SendBytes(string printerName, byte[] bytes) {
+  public static int SendBytes(string printerName, byte[] bytes) {
     IntPtr hPrinter;
     if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) {
       throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "OpenPrinter failed");
     }
     try {
       var di = new DOCINFO { pDocName = "POS Print", pDataType = "RAW" };
-      if (!StartDocPrinter(hPrinter, 1, di)) {
+      int jobId = StartDocPrinter(hPrinter, 1, di);
+      if (jobId <= 0) {
         throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "StartDocPrinter failed");
       }
       try {
@@ -63,6 +64,7 @@ public class RawPrinterHelper {
       } finally {
         EndDocPrinter(hPrinter);
       }
+      return jobId;
     } finally {
       ClosePrinter(hPrinter);
     }
@@ -71,4 +73,5 @@ public class RawPrinterHelper {
 "@
 
 $bytes = [System.IO.File]::ReadAllBytes($FilePath)
-[RawPrinterHelper]::SendBytes($PrinterName, $bytes)
+$jobId = [RawPrinterHelper]::SendBytes($PrinterName, $bytes)
+@{ ok = $true; os_job_id = [string]$jobId; queue = $PrinterName; bytes_sent = $bytes.Length } | ConvertTo-Json -Compress
