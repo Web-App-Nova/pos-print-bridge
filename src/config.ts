@@ -6,9 +6,10 @@ export const HOST = process.env.POS_PRINT_BRIDGE_HOST || '127.0.0.1';
 export const PRINT_TIMEOUT_MS = Number(process.env.POS_PRINT_TIMEOUT_MS || 8000);
 /** Wait for OS spooler job to finish (leave queue) before reporting printed. */
 export const PRINT_CONFIRM_TIMEOUT_MS = Number(
-  process.env.POS_PRINT_CONFIRM_TIMEOUT_MS || 40_000,
+  process.env.POS_PRINT_CONFIRM_TIMEOUT_MS || 8_000,
 );
-export const PRINT_CONFIRM_POLL_MS = Number(process.env.POS_PRINT_CONFIRM_POLL_MS || 1000);
+/** Poll often so offline/error fails the job almost immediately. */
+export const PRINT_CONFIRM_POLL_MS = Number(process.env.POS_PRINT_CONFIRM_POLL_MS || 300);
 export const DISCOVERY_TIMEOUT_MS = Number(process.env.POS_DISCOVERY_TIMEOUT_MS || 220);
 
 export function bridgeStatus() {

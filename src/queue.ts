@@ -432,7 +432,7 @@ export async function confirmQueuePrint(args: {
     printed: false,
     status: 'failed',
     message:
-      'Print not confirmed in 40 seconds — job removed from system queue (printer slow/offline)',
+      `Print not confirmed in ${Math.round(timeoutMs / 1000)}s — job removed from system queue (printer slow/offline)`,
     os_job_id: osJobId,
     queue_jobs: jobs.length,
     printer_state: state,
