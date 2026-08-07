@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pos.print-bridge</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__BRIDGE_BIN__</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/err.log</string>
+  <key>WorkingDirectory</key>
+  <string>__INSTALL_DIR__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>POS_PRINT_BRIDGE_HOST</key>
+    <string>127.0.0.1</string>
+    <key>POS_PRINT_BRIDGE_PORT</key>
+    <string>9247</string>
+  </dict>
+</dict>
+</plist>

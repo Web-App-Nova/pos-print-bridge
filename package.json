@@ -1,6 +1,6 @@
 {
   "name": "pos-print-bridge",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Local print bridge for POS billing — discovers LAN printers and sends raw jobs",
   "type": "module",
@@ -14,7 +14,11 @@
     "start": "node build/index.js",
     "typecheck": "tsc --noEmit",
     "setup:autostart": "node scripts/setup-autostart.mjs",
-    "remove:autostart": "node scripts/remove-autostart.mjs"
+    "remove:autostart": "node scripts/remove-autostart.mjs",
+    "package:binaries": "node packaging/build-binaries.mjs",
+    "package:binaries:current": "node packaging/build-binaries.mjs --current",
+    "package:dmg": "bash packaging/macos/build-dmg.sh",
+    "package:win": "npm run package:binaries && echo 'Compile packaging/windows/installer.iss with Inno Setup (iscc)'"
   },
   "engines": {
     "node": ">=18"
@@ -27,6 +31,8 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.2",
+    "@yao-pkg/pkg": "^5.16.1",
+    "esbuild": "^0.25.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

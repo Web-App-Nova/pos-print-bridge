@@ -1,8 +1,5 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import * as os from 'node:os';
-
-const execFileAsync = promisify(execFile);
+import { execFileHidden, powershellHiddenArgs } from './exec.js';
 
 export type PrinterLinkKind = 'network' | 'wifi' | 'usb' | 'bluetooth' | 'local';
 export type BackendConnectionType = 'network' | 'usb' | 'bluetooth';
@@ -83,7 +80,7 @@ async function discoverCupsPrinters(): Promise<SystemPrinterDevice[]> {
 
   let stdout = '';
   try {
-    const result = await execFileAsync('lpstat', ['-v'], { timeout: 8000 });
+    const result = await execFileHidden('lpstat', ['-v'], { timeout: 8000 });
     stdout = result.stdout || '';
   } catch {
     return [];
@@ -155,9 +152,9 @@ async function discoverWindowsPrinters(): Promise<SystemPrinterDevice[]> {
   try {
     const script =
       'Get-CimInstance Win32_Printer | Select-Object Name,PortName,Network,Local | ConvertTo-Json -Compress';
-    const result = await execFileAsync(
+    const result = await execFileHidden(
       'powershell',
-      ['-NoProfile', '-Command', script],
+      powershellHiddenArgs(['-Command', script]),
       { timeout: 12000, maxBuffer: 4 * 1024 * 1024 },
     );
     const raw = (result.stdout || '').trim();
@@ -193,7 +190,7 @@ export async function discoverSystemPrinters(): Promise<SystemPrinterDevice[]> {
   // Fallback when lpstat is empty but OS lists printers differently.
   if (process.platform === 'darwin') {
     try {
-      const result = await execFileAsync('lpstat', ['-a'], { timeout: 5000 });
+      const result = await execFileHidden('lpstat', ['-a'], { timeout: 5000 });
       return (result.stdout || '')
         .split('\n')
         .map((line) => line.match(/^(\S+)\s/)?.[1])

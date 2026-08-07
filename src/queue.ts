@@ -1,8 +1,5 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { PRINT_CONFIRM_POLL_MS, PRINT_CONFIRM_TIMEOUT_MS } from './config.js';
-
-const execFileAsync = promisify(execFile);
+import { execFileHidden, powershellHiddenArgs } from './exec.js';
 
 export type PrinterQueueState = 'online' | 'offline' | 'paused' | 'error' | 'unknown';
 
@@ -44,7 +41,7 @@ function parseCupsJobId(stdout: string): string | null {
 
 async function cupsPrinterState(queue: string): Promise<{ state: PrinterQueueState; detail: string }> {
   try {
-    const { stdout } = await execFileAsync('lpstat', ['-p', queue], { timeout: 8000 });
+    const { stdout } = await execFileHidden('lpstat', ['-p', queue], { timeout: 8000 });
     const text = stdout.trim();
     const lower = text.toLowerCase();
     if (lower.includes('disabled') || lower.includes('offline')) {
@@ -66,7 +63,7 @@ async function cupsPrinterState(queue: string): Promise<{ state: PrinterQueueSta
 async function cupsListJobs(queue?: string): Promise<OsPrintJob[]> {
   try {
     const args = queue ? ['-o', queue] : ['-o'];
-    const { stdout } = await execFileAsync('lpstat', args, { timeout: 8000 });
+    const { stdout } = await execFileHidden('lpstat', args, { timeout: 8000 });
     const jobs: OsPrintJob[] = [];
     for (const line of stdout.split('\n')) {
       // e.g. GP-C80250I_Plus-42 user 1234 Wed 01 Aug 2024 03:00:00 PM IST
@@ -92,7 +89,7 @@ async function cupsListJobs(queue?: string): Promise<OsPrintJob[]> {
 async function cupsListQueues(): Promise<QueueInfo[]> {
   const names = new Set<string>();
   try {
-    const { stdout } = await execFileAsync('lpstat', ['-a'], { timeout: 8000 });
+    const { stdout } = await execFileHidden('lpstat', ['-a'], { timeout: 8000 });
     for (const line of stdout.split('\n')) {
       const name = line.trim().split(/\s+/)[0];
       if (name) names.add(name);
@@ -101,7 +98,7 @@ async function cupsListQueues(): Promise<QueueInfo[]> {
     /* ignore */
   }
   try {
-    const { stdout } = await execFileAsync('lpstat', ['-v'], { timeout: 8000 });
+    const { stdout } = await execFileHidden('lpstat', ['-v'], { timeout: 8000 });
     for (const line of stdout.split('\n')) {
       const match = line.match(/^device for (.+):/i);
       if (match?.[1]) names.add(match[1].trim());
@@ -126,7 +123,7 @@ async function cupsListQueues(): Promise<QueueInfo[]> {
 }
 
 async function cupsCancelJob(osJobId: string): Promise<void> {
-  await execFileAsync('cancel', [osJobId], { timeout: 8000 });
+  await execFileHidden('cancel', [osJobId], { timeout: 8000 });
 }
 
 async function cupsJobStillPending(osJobId: string, queue: string): Promise<boolean> {
@@ -151,9 +148,9 @@ elseif ($p.WorkOffline) { $state = 'offline' }
 @{ state = $state; detail = $detail } | ConvertTo-Json -Compress
 `;
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await execFileHidden(
       'powershell',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      powershellHiddenArgs(['-Command', script]),
       { timeout: 15000, maxBuffer: 2 * 1024 * 1024 },
     );
     const parsed = JSON.parse(stdout.trim() || '{}') as { state?: string; detail?: string };
@@ -180,9 +177,9 @@ Get-PrintJob -PrinterName ${JSON.stringify(queue)} | ForEach-Object {
 } | ConvertTo-Json -Compress
 `;
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await execFileHidden(
       'powershell',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      powershellHiddenArgs(['-Command', script]),
       { timeout: 15000, maxBuffer: 4 * 1024 * 1024 },
     );
     const trimmed = stdout.trim();
@@ -221,9 +218,9 @@ Get-Printer | ForEach-Object {
 } | ConvertTo-Json -Compress -Depth 5
 `;
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await execFileHidden(
       'powershell',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      powershellHiddenArgs(['-Command', script]),
       { timeout: 30000, maxBuffer: 8 * 1024 * 1024 },
     );
     const trimmed = stdout.trim();
@@ -240,9 +237,9 @@ async function windowsCancelJob(queue: string, osJobId: string): Promise<void> {
 $ErrorActionPreference = 'Stop'
 Remove-PrintJob -PrinterName ${JSON.stringify(queue)} -ID ${Number(osJobId)}
 `;
-  await execFileAsync(
+  await execFileHidden(
     'powershell',
-    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+    powershellHiddenArgs(['-Command', script]),
     { timeout: 15000 },
   );
 }

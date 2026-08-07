@@ -120,6 +120,73 @@ Or base64 ESC/POS:
 | `POS_PRINT_CONFIRM_POLL_MS` | `1000` | Queue poll interval |
 | `POS_DISCOVERY_TIMEOUT_MS` | `220` | Per-host probe timeout |
 
+## Packaged installers (invisible background)
+
+Goal: install once → bridge runs **with no window / no tray**, starts at login, no PowerShell flash.
+
+### 1) Build binaries (any OS with Node)
+
+```bash
+cd pos-print-bridge
+npm install
+npm run package:binaries
+```
+
+Creates:
+
+- `dist/bin/pos-print-bridge-win-x64.exe`
+- `dist/bin/pos-print-bridge-macos-arm64` / `…-macos-x64`
+- `dist/stage-win/` — ready for Inno Setup
+- `dist/stage-mac/` — ready for DMG / Install.command
+
+Current machine only (faster):
+
+```bash
+npm run package:binaries:current
+```
+
+### 2) Windows Setup.exe (Inno Setup)
+
+1. Install [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+2. Build binaries (above) so `dist/stage-win/pos-print-bridge.exe` exists
+3. Compile: open `packaging/windows/installer.iss` → Build, or:
+
+```bat
+iscc packaging\windows\installer.iss
+```
+
+Output: `dist/installers/POS-Print-Bridge-Setup.exe`
+
+Installer will:
+
+- Copy files under `%LocalAppData%` / Program Files (per privileges)
+- Register a **Task Scheduler** job “POS Print Bridge” (at logon, restart on failure)
+- Start the bridge **hidden** (`runhidden` — no console)
+
+Uninstall removes the task and stops the process.
+
+### 3) macOS DMG
+
+```bash
+npm run package:binaries
+npm run package:dmg
+```
+
+Output: `dist/installers/POS-Print-Bridge.dmg`
+
+User opens DMG → double-clicks **Install.command** → LaunchAgent installed → runs in background (no Dock icon).  
+**Uninstall.command** removes it.
+
+Logs: `~/Library/Logs/pos-print-bridge/`
+
+For public distribution: codesign + notarize the binary/DMG (Apple Developer ID).
+
+### Runtime check
+
+```bash
+curl http://127.0.0.1:9247/status
+```
+
 ## Billing app
 
 Set in `pos-billing/.env` (optional):

@@ -1,10 +1,7 @@
-import { execFile } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { promisify } from 'node:util';
 import { PRINT_TIMEOUT_MS } from './config.js';
-
-const execFileAsync = promisify(execFile);
+import { execFileHidden } from './exec.js';
 
 const USB_BACKEND = '/usr/libexec/cups/backend/usb';
 
@@ -15,7 +12,7 @@ function normalizeQueueName(value: string): string {
 /** Resolve CUPS device URI for a queue, e.g. usb://GPrinter/GP-C80250I%20Plus?... */
 export async function resolveCupsDeviceUri(queue: string): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync('lpstat', ['-v'], { timeout: 8000 });
+    const { stdout } = await execFileHidden('lpstat', ['-v'], { timeout: 8000 });
     const target = normalizeQueueName(queue);
     for (const line of stdout.split('\n')) {
       const match = line.match(/^device for (.+):\s*(.+)$/i);
@@ -41,7 +38,7 @@ export async function sendDarwinUsbBackendPrint(
 ): Promise<void> {
   await access(USB_BACKEND, constants.X_OK);
   const user = process.env.USER || 'pos';
-  await execFileAsync(
+  await execFileHidden(
     USB_BACKEND,
     [deviceUri, '1', user, title, '1', '', filePath],
     { timeout: PRINT_TIMEOUT_MS, maxBuffer: 1024 * 1024 },

@@ -1,12 +1,10 @@
-import { execFile, spawn } from 'node:child_process';
-import { promisify } from 'node:util';
 import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
 import * as net from 'node:net';
 import { PRINT_TIMEOUT_MS } from './config.js';
+import { execFileHidden, powershellHiddenArgs, spawnHidden } from './exec.js';
+import { resolveScriptPath } from './paths.js';
 import {
   isUsbDeviceUri,
   resolveCupsDeviceUri,
@@ -18,9 +16,6 @@ import {
   parseCupsSubmitJobId,
   type ConfirmPrintResult,
 } from './queue.js';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export interface PrintJobRequest {
   host?: string;
@@ -162,7 +157,7 @@ export function sendRawTcpPrint(
 
 async function lpStdinRaw(queue: string, payload: Buffer): Promise<string> {
   return new Promise<string>((resolve, reject) => {
-    const child = spawn(
+    const child = spawnHidden(
       'lp',
       [
         '-d',
@@ -181,14 +176,14 @@ async function lpStdinRaw(queue: string, payload: Buffer): Promise<string> {
     );
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (chunk) => {
+    child.stdout?.on('data', (chunk) => {
       stdout += String(chunk);
     });
-    child.stderr.on('data', (chunk) => {
+    child.stderr?.on('data', (chunk) => {
       stderr += String(chunk);
     });
-    child.stdin.write(payload);
-    child.stdin.end();
+    child.stdin?.write(payload);
+    child.stdin?.end();
     child.on('error', reject);
     child.on('close', (code) => {
       if (code === 0) resolve(stdout.trim());
@@ -235,7 +230,7 @@ async function sendCupsQueuePrint(
       const stdout = await lpStdinRaw(queue, payload);
       osJobId = parseCupsSubmitJobId(stdout);
     } catch {
-      const { stdout } = await execFileAsync(
+      const { stdout } = await execFileHidden(
         'lp',
         [
           '-d',
@@ -274,22 +269,12 @@ async function sendCupsQueuePrint(
 async function sendWindowsQueuePrint(queue: string, payload: Buffer): Promise<PrintJobResult> {
   const file = join(tmpdir(), `pos-print-${Date.now()}.raw`);
   await writeFile(file, payload);
-  const script = join(__dirname, '..', 'scripts', 'windows-raw-print.ps1');
+  const script = resolveScriptPath('windows-raw-print.ps1');
   let osJobId: string | null = null;
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await execFileHidden(
       'powershell',
-      [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-File',
-        script,
-        '-PrinterName',
-        queue,
-        '-FilePath',
-        file,
-      ],
+      powershellHiddenArgs(['-File', script, '-PrinterName', queue, '-FilePath', file]),
       { timeout: PRINT_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
     );
     try {
