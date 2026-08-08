@@ -1,4 +1,8 @@
 node_modules/
 build/
+release/
 .DS_Store
 *.log
+*.tgz
+installer/windows/vendor/nssm.exe
+installer/windows/vendor/*.exe

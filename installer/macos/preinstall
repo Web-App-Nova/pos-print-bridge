@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+LABEL="com.pos.print-bridge"
+# Stop existing agent if installed (best effort)
+for domain in "gui/$(id -u)" "system"; do
+  launchctl bootout "$domain/$LABEL" 2>/dev/null || true
+done
+exit 0

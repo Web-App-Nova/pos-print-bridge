@@ -3,8 +3,6 @@ import { promisify } from 'node:util';
 import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
 import * as net from 'node:net';
 import { PRINT_TIMEOUT_MS } from './config.js';
 import {
@@ -18,9 +16,9 @@ import {
   parseCupsSubmitJobId,
   type ConfirmPrintResult,
 } from './queue.js';
+import { getScriptsDir } from './paths.js';
 
 const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export interface PrintJobRequest {
   host?: string;
@@ -197,11 +195,42 @@ async function lpStdinRaw(queue: string, payload: Buffer): Promise<string> {
   });
 }
 
+async function listCupsQueueNames(): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync('lpstat', ['-a'], { timeout: 8000 });
+    return stdout
+      .split('\n')
+      .map((line) => line.trim().split(/\s+/)[0])
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function assertCupsQueueExists(queue: string): Promise<void> {
+  const names = await listCupsQueueNames();
+  if (!names.length) {
+    throw new Error(
+      `No printers installed on this Mac. Add the printer in System Settings → Printers, then Refresh in POS. (requested: ${queue})`,
+    );
+  }
+  const match = names.find(
+    (name) => name === queue || name.toLowerCase() === queue.toLowerCase(),
+  );
+  if (!match) {
+    throw new Error(
+      `Printer queue not found: "${queue}". Available on this Mac: ${names.join(', ')}. Re-select the printer in POS Printer Config and Save.`,
+    );
+  }
+}
+
 async function sendCupsQueuePrint(
   queue: string,
   payload: Buffer,
   uri?: string,
 ): Promise<PrintJobResult> {
+  await assertCupsQueueExists(queue);
+
   const file = join(tmpdir(), `pos-print-${Date.now()}.raw`);
   await writeFile(file, payload);
   let osJobId: string | null = null;
@@ -234,24 +263,34 @@ async function sendCupsQueuePrint(
     try {
       const stdout = await lpStdinRaw(queue, payload);
       osJobId = parseCupsSubmitJobId(stdout);
-    } catch {
-      const { stdout } = await execFileAsync(
-        'lp',
-        [
-          '-d',
-          queue,
-          '-o',
-          'raw',
-          '-o',
-          'document-format=application/octet-stream',
-          '-o',
-          'fit-to-page=false',
-          file,
-        ],
-        { timeout: PRINT_TIMEOUT_MS },
-      );
-      osJobId = parseCupsSubmitJobId(stdout || '');
-      method = 'cups-queue';
+    } catch (stdinError) {
+      try {
+        const { stdout } = await execFileAsync(
+          'lp',
+          [
+            '-d',
+            queue,
+            '-o',
+            'raw',
+            '-o',
+            'document-format=application/octet-stream',
+            '-o',
+            'fit-to-page=false',
+            file,
+          ],
+          { timeout: PRINT_TIMEOUT_MS },
+        );
+        osJobId = parseCupsSubmitJobId(stdout || '');
+        method = 'cups-queue';
+      } catch (fileError) {
+        const detail =
+          fileError instanceof Error
+            ? fileError.message
+            : stdinError instanceof Error
+              ? stdinError.message
+              : String(fileError);
+        throw new Error(`CUPS print failed for queue "${queue}": ${detail}`);
+      }
     }
   } finally {
     await unlink(file).catch(() => undefined);
@@ -274,7 +313,7 @@ async function sendCupsQueuePrint(
 async function sendWindowsQueuePrint(queue: string, payload: Buffer): Promise<PrintJobResult> {
   const file = join(tmpdir(), `pos-print-${Date.now()}.raw`);
   await writeFile(file, payload);
-  const script = join(__dirname, '..', 'scripts', 'windows-raw-print.ps1');
+  const script = join(getScriptsDir(), 'windows-raw-print.ps1');
   let osJobId: string | null = null;
   try {
     const { stdout } = await execFileAsync(

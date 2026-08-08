@@ -1,8 +1,8 @@
 {
   "name": "pos-print-bridge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Local print bridge for POS billing — discovers LAN printers and sends raw jobs",
+  "description": "Local Printer Agent for POS billing — discovers printers, queues jobs, and prints via USB/LAN",
   "type": "module",
   "main": "build/index.js",
   "bin": {
@@ -14,7 +14,14 @@
     "start": "node build/index.js",
     "typecheck": "tsc --noEmit",
     "setup:autostart": "node scripts/setup-autostart.mjs",
-    "remove:autostart": "node scripts/remove-autostart.mjs"
+    "remove:autostart": "node scripts/remove-autostart.mjs",
+    "package": "node scripts/package.mjs",
+    "package:macos": "node scripts/package.mjs --platform macos",
+    "package:windows": "node scripts/package.mjs --platform windows",
+    "release": "node scripts/release.mjs",
+    "release:macos": "node scripts/release.mjs --platform macos",
+    "release:windows": "node scripts/release.mjs --platform windows",
+    "smoke": "node scripts/smoke-test.mjs"
   },
   "engines": {
     "node": ">=18"

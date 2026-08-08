@@ -1,20 +1,54 @@
 #!/usr/bin/env bash
+# Dev/local auto-start: LaunchAgent pointing at portable runtime OR node+build.
 set -euo pipefail
 
 ROOT="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
-NODE="$(command -v node || true)"
-
-if [ -z "$NODE" ]; then
-  echo "Error: node not found in PATH. Install Node.js 18+ first."
-  exit 1
-fi
-
 LABEL="com.pos.print-bridge"
 PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 LOG_DIR="$HOME/Library/Logs/pos-print-bridge"
+DATA_DIR="$HOME/Library/Application Support/pos-print-bridge"
 UID_NUM="$(id -u)"
 
-mkdir -p "$LOG_DIR" "$HOME/Library/LaunchAgents"
+mkdir -p "$LOG_DIR" "$DATA_DIR" "$HOME/Library/LaunchAgents"
+
+BIN=""
+ARGS=()
+WORKDIR="$ROOT"
+INSTALL_DIR="$ROOT"
+
+if [[ -x "$ROOT/release/bin/macos-arm64/pos-print-bridge" && "$(uname -m)" == "arm64" ]]; then
+  BIN="$ROOT/release/bin/macos-arm64/pos-print-bridge"
+  WORKDIR="$ROOT/release/bin/macos-arm64"
+  INSTALL_DIR="$WORKDIR"
+elif [[ -x "$ROOT/release/bin/macos-x64/pos-print-bridge" ]]; then
+  BIN="$ROOT/release/bin/macos-x64/pos-print-bridge"
+  WORKDIR="$ROOT/release/bin/macos-x64"
+  INSTALL_DIR="$WORKDIR"
+elif [[ -x "/usr/local/lib/pos-print-bridge/pos-print-bridge" ]]; then
+  BIN="/usr/local/lib/pos-print-bridge/pos-print-bridge"
+  WORKDIR="/usr/local/lib/pos-print-bridge"
+  INSTALL_DIR="$WORKDIR"
+else
+  NODE="$(command -v node || true)"
+  if [[ -z "$NODE" ]]; then
+    echo "Error: node not found. Install Node.js 18+ or run npm run package:macos first."
+    exit 1
+  fi
+  if [[ ! -f "$ROOT/build/index.js" ]]; then
+    echo "Building project…"
+    (cd "$ROOT" && npm run build)
+  fi
+  BIN="$NODE"
+  ARGS=("$ROOT/build/index.js")
+  WORKDIR="$ROOT"
+  INSTALL_DIR="$ROOT"
+fi
+
+PROGRAM_ARGS="    <string>${BIN}</string>"
+for a in "${ARGS[@]+"${ARGS[@]}"}"; do
+  PROGRAM_ARGS+="
+    <string>${a}</string>"
+done
 
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -25,11 +59,10 @@ cat > "$PLIST" <<EOF
   <string>${LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${NODE}</string>
-    <string>${ROOT}/build/index.js</string>
+${PROGRAM_ARGS}
   </array>
   <key>WorkingDirectory</key>
-  <string>${ROOT}</string>
+  <string>${WORKDIR}</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -42,12 +75,23 @@ cat > "$PLIST" <<EOF
   <dict>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>POS_PRINT_BRIDGE_ENV</key>
+    <string>production</string>
+    <key>POS_PRINT_BRIDGE_HOST</key>
+    <string>127.0.0.1</string>
+    <key>POS_PRINT_BRIDGE_PORT</key>
+    <string>9247</string>
+    <key>POS_PRINT_BRIDGE_DATA_DIR</key>
+    <string>${DATA_DIR}</string>
+    <key>POS_PRINT_BRIDGE_LOG_DIR</key>
+    <string>${LOG_DIR}</string>
+    <key>POS_PRINT_BRIDGE_INSTALL_DIR</key>
+    <string>${INSTALL_DIR}</string>
   </dict>
 </dict>
 </plist>
 EOF
 
-# Reload if already registered.
 launchctl bootout "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
 launchctl bootstrap "gui/${UID_NUM}" "$PLIST"
 launchctl enable "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
@@ -56,9 +100,9 @@ launchctl kickstart -k "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
 echo ""
 echo "Auto-start enabled on macOS."
 echo "  Service : ${LABEL}"
-echo "  Project : ${ROOT}"
+echo "  Binary  : ${BIN}"
 echo "  Logs    : ${LOG_DIR}/"
 echo "  URL     : http://127.0.0.1:9247"
 echo ""
-echo "The bridge will start automatically every time you log in."
+echo "The agent starts automatically at login (KeepAlive restarts on crash)."
 echo "To remove: npm run remove:autostart"

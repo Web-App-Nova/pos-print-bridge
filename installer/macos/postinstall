@@ -1,0 +1,119 @@
+#!/bin/bash
+set -euo pipefail
+
+LABEL="com.pos.print-bridge"
+INSTALL_DIR="/usr/local/lib/pos-print-bridge"
+LAUNCHER="$INSTALL_DIR/pos-print-bridge"
+
+CONSOLE_USER="${USER:-}"
+if [[ "$(id -u)" -eq 0 ]]; then
+  CONSOLE_USER="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
+  if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" ]]; then
+    CONSOLE_USER="$(/usr/bin/last -1 -t console | awk '{print $1; exit}')"
+  fi
+fi
+if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" ]]; then
+  CONSOLE_USER="$(id -un)"
+fi
+USER_HOME="$(dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+if [[ -z "$USER_HOME" ]]; then
+  USER_HOME="/Users/$CONSOLE_USER"
+fi
+UID_NUM="$(id -u "$CONSOLE_USER")"
+PLIST="$USER_HOME/Library/LaunchAgents/${LABEL}.plist"
+LOG_DIR="$USER_HOME/Library/Logs/pos-print-bridge"
+DATA_DIR="$USER_HOME/Library/Application Support/pos-print-bridge"
+
+mkdir -p "$LOG_DIR" "$DATA_DIR" "$USER_HOME/Library/LaunchAgents"
+chown -R "$CONSOLE_USER:staff" "$LOG_DIR" "$DATA_DIR" "$USER_HOME/Library/LaunchAgents" 2>/dev/null || true
+
+if [[ ! -x "$LAUNCHER" ]]; then
+  echo "ERROR: Agent launcher missing at $LAUNCHER"
+  exit 1
+fi
+
+CONFIG="$DATA_DIR/config.json"
+if [[ ! -f "$CONFIG" ]]; then
+  cat > "$CONFIG" <<'EOF'
+{
+  "version": 1,
+  "environment": "production",
+  "host": "127.0.0.1",
+  "port": 9247,
+  "authToken": "",
+  "printers": [],
+  "updateChannel": "stable",
+  "updateUrl": "",
+  "maxRetries": 2,
+  "retryDelayMs": 1500
+}
+EOF
+  chown "$CONSOLE_USER:staff" "$CONFIG" 2>/dev/null || true
+fi
+
+cat > "$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${LAUNCHER}</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${INSTALL_DIR}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${LOG_DIR}/out.log</string>
+  <key>StandardErrorPath</key>
+  <string>${LOG_DIR}/err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>POS_PRINT_BRIDGE_ENV</key>
+    <string>production</string>
+    <key>POS_PRINT_BRIDGE_HOST</key>
+    <string>127.0.0.1</string>
+    <key>POS_PRINT_BRIDGE_PORT</key>
+    <string>9247</string>
+    <key>POS_PRINT_BRIDGE_DATA_DIR</key>
+    <string>${DATA_DIR}</string>
+    <key>POS_PRINT_BRIDGE_LOG_DIR</key>
+    <string>${LOG_DIR}</string>
+    <key>POS_PRINT_BRIDGE_INSTALL_DIR</key>
+    <string>${INSTALL_DIR}</string>
+    <key>HOME</key>
+    <string>${USER_HOME}</string>
+  </dict>
+</dict>
+</plist>
+EOF
+chown "$CONSOLE_USER:staff" "$PLIST" 2>/dev/null || true
+
+launchctl bootout "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
+launchctl bootstrap "gui/${UID_NUM}" "$PLIST"
+launchctl enable "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
+launchctl kickstart -k "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
+
+ok=0
+for _ in $(seq 1 15); do
+  sleep 1
+  if curl -fsS "http://127.0.0.1:9247/health" >/dev/null 2>&1; then
+    ok=1
+    break
+  fi
+done
+
+if [[ "$ok" -eq 1 ]]; then
+  echo "YourPOS Printer Agent installed and running at http://127.0.0.1:9247"
+else
+  echo "WARNING: Agent installed but health check pending. Logs: $LOG_DIR"
+fi
+
+exit 0
