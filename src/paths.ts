@@ -23,13 +23,19 @@ export function getInstallDir(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url)); // .../build
   const appOrProject = join(moduleDir, '..'); // .../app or project root
   const portableRoot = join(appOrProject, '..');
+  // Portable layout: <root>/node(+exe) + <root>/app/build/index.js
+  // Do not key off a folder named "pos-print-bridge" (repo checkout name).
   if (
-    existsSync(join(portableRoot, 'node')) ||
-    existsSync(join(portableRoot, 'node.exe')) ||
-    existsSync(join(portableRoot, 'pos-print-bridge')) ||
-    existsSync(join(portableRoot, 'pos-print-bridge.cmd'))
+    (existsSync(join(portableRoot, 'node')) || existsSync(join(portableRoot, 'node.exe'))) &&
+    existsSync(join(portableRoot, 'app', 'build', 'index.js'))
   ) {
     return portableRoot;
+  }
+  if (
+    (existsSync(join(appOrProject, 'node')) || existsSync(join(appOrProject, 'node.exe'))) &&
+    existsSync(join(appOrProject, 'app', 'build', 'index.js'))
+  ) {
+    return appOrProject;
   }
   return appOrProject;
 }
@@ -39,9 +45,8 @@ export function isProductionInstall(): boolean {
   if (isPackaged()) return true;
   const install = getInstallDir();
   return (
-    existsSync(join(install, 'node')) ||
-    existsSync(join(install, 'node.exe')) ||
-    existsSync(join(install, 'VERSION'))
+    (existsSync(join(install, 'node')) || existsSync(join(install, 'node.exe'))) &&
+    existsSync(join(install, 'app', 'build', 'index.js'))
   );
 }
 
@@ -57,6 +62,20 @@ export function getScriptsDir(): string {
     if (existsSync(dir)) return dir;
   }
   return join(install, 'scripts');
+}
+
+/** Branding assets (logo, icons). */
+export function getAssetsDir(): string {
+  const install = getInstallDir();
+  const candidates = [
+    join(install, 'assets'),
+    join(install, 'app', 'assets'),
+    join(install, '..', 'assets'),
+  ];
+  for (const dir of candidates) {
+    if (existsSync(dir)) return dir;
+  }
+  return join(install, 'assets');
 }
 
 function windowsProgramData(): string {

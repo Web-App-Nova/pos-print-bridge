@@ -27,4 +27,4 @@ if (-not $iscc) {
 }
 
 & $iscc $Iss
-Write-Host "Installer written to release\windows\YourPOS-Printer-Agent-Setup.exe"
+Write-Host "Installer written to release\windows\POS-Printer-Agent-Setup.exe"

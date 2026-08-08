@@ -2,6 +2,8 @@
 import cors from 'cors';
 import express from 'express';
 import type { Server } from 'node:http';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { bridgeStatus, getHost, getPort, healthStatus, BRIDGE_VERSION } from './config.js';
 import { discoverAllPrinters, type UnifiedPrinterDevice } from './discover-all.js';
 import { PrintConfirmError, type PrintJobRequest } from './print.js';
@@ -13,7 +15,7 @@ import {
   listQueues,
 } from './queue.js';
 import { jobQueue, type JobType } from './job-queue.js';
-import { ensureAppDirs } from './paths.js';
+import { ensureAppDirs, getAssetsDir } from './paths.js';
 import { getConfig, loadConfig, upsertStoredPrinter, type StoredPrinter } from './store.js';
 import { logger } from './logger.js';
 
@@ -25,12 +27,23 @@ const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: '2mb' }));
 
+const assetsDir = getAssetsDir();
+if (existsSync(assetsDir)) {
+  app.use('/assets', express.static(assetsDir, { maxAge: '1d', index: false }));
+}
+
 /** Optional bearer auth when config.authToken is set. */
 app.use((req, res, next) => {
   const token = getConfig().authToken;
   if (!token) return next();
-  // Health/version stay open for POS offline detection.
-  if (req.path === '/health' || req.path === '/status' || req.path === '/version') {
+  // Health/version/branding stay open for POS offline detection.
+  if (
+    req.path === '/' ||
+    req.path === '/health' ||
+    req.path === '/status' ||
+    req.path === '/version' ||
+    req.path.startsWith('/assets/')
+  ) {
     return next();
   }
   const header = req.headers.authorization || '';
@@ -141,24 +154,62 @@ async function handlePrint(
 
 app.get('/', (_req, res) => {
   const health = healthStatus();
+  const logoPath = join(assetsDir, 'logo.png');
+  const iconPath = join(assetsDir, 'icon.svg');
+  const logoSrc = existsSync(logoPath)
+    ? '/assets/logo.png'
+    : existsSync(iconPath)
+      ? '/assets/icon.svg'
+      : '';
+  const faviconPng = join(assetsDir, 'favicon.png');
+  const favicon = existsSync(faviconPng)
+    ? '/assets/favicon.png'
+    : existsSync(logoPath)
+      ? '/assets/logo.png'
+      : '/assets/icon.svg';
   res.type('html').send(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>YourPOS Printer Agent</title>
+  <title>POS Printer Agent</title>
+  <link rel="icon" href="${favicon}"/>
   <style>
-    body { font-family: ui-sans-serif, system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; color: #111; }
-    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
-    .ok { color: #0a7a32; font-weight: 600; }
+    :root { color-scheme: light; }
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      max-width: 40rem;
+      margin: 2rem auto;
+      padding: 0 1rem 2rem;
+      color: #111;
+      background: linear-gradient(180deg, #f6f4ef 0%, #fff 40%);
+      min-height: 100vh;
+    }
+    .brand { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 1.25rem; }
+    .brand img {
+      height: 64px;
+      width: 64px;
+      border-radius: 50%;
+      display: block;
+      background: #000;
+      object-fit: cover;
+    }
+    h1 { font-size: 1.35rem; margin: 0; letter-spacing: -0.02em; }
+    .ok { color: #0a7a32; font-weight: 600; margin: 0.35rem 0 1rem; }
     code, a { font-family: ui-monospace, Menlo, monospace; font-size: 0.9rem; }
     ul { line-height: 1.7; padding-left: 1.2rem; }
     p { color: #444; }
+    footer { margin-top: 2rem; font-size: 0.8rem; color: #777; }
   </style>
 </head>
 <body>
-  <h1>YourPOS Printer Agent</h1>
-  <p class="ok">● Running</p>
+  <div class="brand">
+    ${logoSrc ? `<img src="${logoSrc}" alt="WEBAPPNOVA logo"/>` : ''}
+    <div>
+      <h1>POS Printer Agent</h1>
+      <p class="ok">● Running</p>
+    </div>
+  </div>
   <p>Version ${health.version} · uptime ${health.uptime}s · ${health.host}:${health.port}</p>
   <p>This is an API service for the POS app — not a full website. Useful endpoints:</p>
   <ul>
@@ -168,6 +219,7 @@ app.get('/', (_req, res) => {
     <li><a href="/printers">/printers</a></li>
     <li><a href="/jobs">/jobs</a></li>
   </ul>
+  <footer>© 2026 WEBAPPNOVA LLP · Proprietary license · See LICENSE in the product package</footer>
 </body>
 </html>`);
 });

@@ -49,7 +49,7 @@ if ($existing) {
 & $Nssm set $ServiceName AppParameters "`"$Entry`""
 & $Nssm set $ServiceName AppDirectory $InstallDir
 & $Nssm set $ServiceName DisplayName $DisplayName
-& $Nssm set $ServiceName Description "YourPOS local Printer Agent — localhost print API for POS billing"
+& $Nssm set $ServiceName Description "POS Printer Agent — localhost print API for POS billing"
 & $Nssm set $ServiceName Start SERVICE_AUTO_START
 & $Nssm set $ServiceName AppStdout (Join-Path $LogDir "service-stdout.log")
 & $Nssm set $ServiceName AppStderr (Join-Path $LogDir "service-stderr.log")

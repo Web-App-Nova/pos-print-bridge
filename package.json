@@ -2,6 +2,8 @@
   "name": "pos-print-bridge",
   "version": "1.1.0",
   "private": true,
+  "license": "UNLICENSED",
+  "author": "WEBAPPNOVA LLP",
   "description": "Local Printer Agent for POS billing — discovers printers, queues jobs, and prints via USB/LAN",
   "type": "module",
   "main": "build/index.js",

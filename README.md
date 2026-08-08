@@ -1,4 +1,8 @@
-# YourPOS Printer Agent (pos-print-bridge)
+# POS Printer Agent (pos-print-bridge)
+
+<p align="center">
+  <img src="assets/logo.png" alt="WEBAPPNOVA logo" height="96"/>
+</p>
 
 Local **Printer Agent** for POS billing PCs (Windows & macOS). Install once on each billing machine; the agent starts automatically after login/restart and exposes a localhost HTTP API for printer discovery and raw ESC/POS printing.
 
@@ -100,9 +104,9 @@ Expected artifacts:
 release/
 ├── bin/
 ├── windows/
-│   └── YourPOS-Printer-Agent-Setup.exe   # built on Windows + Inno Setup
+│   └── POS-Printer-Agent-Setup.exe   # built on Windows + Inno Setup
 └── macos/
-    └── YourPOS-Printer-Agent.pkg         # built on macOS
+    └── POS-Printer-Agent.pkg         # built on macOS
 ```
 
 ## Windows installation
@@ -118,11 +122,34 @@ release/
 powershell -ExecutionPolicy Bypass -File installer\windows\build-installer.ps1
 ```
 
-### Customer install
+### Customer install (Windows)
 
-1. Run `YourPOS-Printer-Agent-Setup.exe`
-2. Installer copies files, registers Windows Service **`POSPrintBridge`**, starts it, health-checks `/health`
-3. After reboot, the service starts automatically — no `npm` / Terminal needed
+The customer PC does **not** need this repo, npm, or Node.js.
+
+1. Copy `POS-Printer-Agent-Setup.exe` to the billing PC
+2. Double-click and follow the wizard (accept the WEBAPPNOVA LLP license)
+3. Installer will:
+   - Install files under `C:\Program Files\POS Printer Agent\`
+   - Create data/log folders under `%PROGRAMDATA%\POS Print Bridge\`
+   - Register Windows Service **`POSPrintBridge`** (auto-start)
+   - Start the service and health-check `http://127.0.0.1:9247/health`
+4. After reboot / login, the agent starts automatically
+
+### Verify install (Windows)
+
+```powershell
+# Service running?
+Get-Service POSPrintBridge
+
+# API healthy?
+Invoke-WebRequest http://127.0.0.1:9247/health | Select-Object -ExpandProperty Content
+
+# Or open in browser:
+# http://127.0.0.1:9247/health
+# http://127.0.0.1:9247/
+```
+
+Expected: JSON with `"status":"running"`.
 
 ### Service management (Windows)
 
@@ -141,6 +168,49 @@ explorer "$env:ProgramData\POS Print Bridge\logs"
 
 NSSM is used for auto-restart on crash.
 
+### Uninstall (Windows)
+
+**Option A — Settings (recommended for customers)**
+
+1. Open **Settings → Apps → Installed apps** (or **Add or Remove Programs**)
+2. Find **POS Printer Agent**
+3. Click **Uninstall** and confirm
+
+This stops/removes the `POSPrintBridge` service and deletes application files.
+
+**Option B — PowerShell (manual)**
+
+```powershell
+# Stop + remove Windows Service
+$InstallDir = "${env:ProgramFiles}\POS Printer Agent"
+$Nssm = Join-Path $InstallDir "nssm.exe"
+if (Test-Path $Nssm) {
+  & $Nssm stop POSPrintBridge confirm
+  & $Nssm remove POSPrintBridge confirm
+} else {
+  Stop-Service POSPrintBridge -Force -ErrorAction SilentlyContinue
+  sc.exe delete POSPrintBridge
+}
+
+# Remove app files
+Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue
+
+# Optional: also remove config + logs
+Remove-Item -Recurse -Force "$env:ProgramData\POS Print Bridge" -ErrorAction SilentlyContinue
+```
+
+**Verify uninstall (Windows)**
+
+```powershell
+Get-Service POSPrintBridge -ErrorAction SilentlyContinue
+# Should print nothing / not found
+
+Invoke-WebRequest http://127.0.0.1:9247/health -ErrorAction SilentlyContinue
+# Should fail (connection refused)
+```
+
+> Note: config/logs under `%PROGRAMDATA%\POS Print Bridge\` may remain after Option A unless deleted manually (see Option B).
+
 ## macOS installation
 
 ### Build the .pkg (on a Mac)
@@ -151,26 +221,122 @@ npm run release:macos
 # or: bash installer/macos/build-pkg.sh
 ```
 
-### Customer install
+### Customer install (macOS)
 
-1. Open `YourPOS-Printer-Agent.pkg`
-2. Installer places the binary under `/usr/local/lib/pos-print-bridge/`
-3. Registers LaunchAgent `com.pos.print-bridge` (`RunAtLoad` + `KeepAlive`)
-4. Starts the agent and verifies `http://127.0.0.1:9247/health`
+The customer Mac does **not** need this repo, npm, or Node.js.
+
+1. Copy `POS-Printer-Agent.pkg` to the billing Mac
+2. Double-click the `.pkg` and follow the installer
+3. Installer will:
+   - Install files under `/usr/local/lib/pos-print-bridge/`
+   - Create wrapper `/usr/local/bin/pos-print-bridge`
+   - Register LaunchAgent `com.pos.print-bridge` (`RunAtLoad` + `KeepAlive`)
+   - Create config/log folders for the user
+   - Start the agent and verify `http://127.0.0.1:9247/health`
+4. After login / restart, the agent starts automatically
+
+### Verify install (macOS)
+
+```bash
+# LaunchAgent running?
+launchctl print "gui/$(id -u)/com.pos.print-bridge" | grep "state ="
+
+# API healthy?
+curl http://127.0.0.1:9247/health
+
+# Files installed?
+ls /usr/local/lib/pos-print-bridge/pos-print-bridge
+ls ~/Library/LaunchAgents/com.pos.print-bridge.plist
+```
+
+Or open in browser:
+
+- http://127.0.0.1:9247/health  
+- http://127.0.0.1:9247/  
+
+Expected: JSON / status page with agent **Running**.
 
 ### Service management (macOS)
 
 ```bash
-# Status / restart
+# Status
 launchctl print "gui/$(id -u)/com.pos.print-bridge"
+
+# Restart
 launchctl kickstart -k "gui/$(id -u)/com.pos.print-bridge"
 
-# Stop
+# Stop (until next login / manual start)
 launchctl bootout "gui/$(id -u)/com.pos.print-bridge"
 
-# Uninstall
+# Logs
+tail -50 ~/Library/Logs/pos-print-bridge/agent.log
+tail -50 ~/Library/Logs/pos-print-bridge/out.log
+tail -50 ~/Library/Logs/pos-print-bridge/err.log
+```
+
+### Uninstall (macOS)
+
+**Option A — Uninstall script (recommended)**
+
+Open **Terminal** and run:
+
+```bash
+bash /usr/local/lib/pos-print-bridge/uninstall.sh
+```
+
+This will:
+
+1. Stop the LaunchAgent  
+2. Remove auto-start (`~/Library/LaunchAgents/com.pos.print-bridge.plist`)  
+3. Delete app files (`/usr/local/lib/pos-print-bridge`, `/usr/local/bin/pos-print-bridge`)
+
+To also delete config + logs:
+
+```bash
+bash /usr/local/lib/pos-print-bridge/uninstall.sh --purge
+```
+
+Enter the Mac password if asked (`sudo`).
+
+From a source checkout (developers):
+
+```bash
 bash installer/macos/uninstall.sh
-# bash installer/macos/uninstall.sh --purge   # also delete config/logs
+bash installer/macos/uninstall.sh --purge
+```
+
+**Option B — Manual uninstall**
+
+```bash
+# 1) Stop the agent
+launchctl bootout "gui/$(id -u)/com.pos.print-bridge"
+
+# 2) Remove auto-start
+rm -f ~/Library/LaunchAgents/com.pos.print-bridge.plist
+
+# 3) Remove installed files
+sudo rm -rf /usr/local/lib/pos-print-bridge
+sudo rm -f /usr/local/bin/pos-print-bridge
+
+# 4) Optional: remove config + logs
+rm -rf ~/Library/Application\ Support/pos-print-bridge
+rm -rf ~/Library/Logs/pos-print-bridge
+
+# 5) Optional: forget package receipt
+sudo pkgutil --forget com.pos.print-bridge
+```
+
+**Verify uninstall (macOS)**
+
+```bash
+curl http://127.0.0.1:9247/health
+# Should fail (connection refused)
+
+ls /usr/local/lib/pos-print-bridge
+# Should say: No such file or directory
+
+launchctl print "gui/$(id -u)/com.pos.print-bridge"
+# Should say service not found / error
 ```
 
 ## API documentation
@@ -319,20 +485,21 @@ VITE_PRINT_BRIDGE_URL=http://127.0.0.1:9247
 
 The billing app uses `/status`, `/discover`, `/queues`, and `/print`. These endpoints remain backward compatible.
 
-## Uninstallation
+## Uninstallation (quick reference)
 
-### Windows
+Full step-by-step uninstall instructions are under each platform section above.
 
-Use **Add or Remove Programs** → YourPOS Printer Agent, or the Setup uninstaller. This stops/removes the `POSPrintBridge` service and deletes application files. Config under ProgramData may remain unless removed manually.
+| OS | Recommended |
+|----|-------------|
+| **Windows** | Settings → Apps → **POS Printer Agent** → Uninstall |
+| **macOS** | `bash /usr/local/lib/pos-print-bridge/uninstall.sh` |
 
-### macOS
+| OS | Also remove config/logs |
+|----|-------------------------|
+| **Windows** | Delete `%PROGRAMDATA%\POS Print Bridge` |
+| **macOS** | `bash /usr/local/lib/pos-print-bridge/uninstall.sh --purge` |
 
-```bash
-bash /usr/local/lib/pos-print-bridge/uninstall.sh
-bash /usr/local/lib/pos-print-bridge/uninstall.sh --purge
-# or from a source checkout:
-bash installer/macos/uninstall.sh --purge
-```
+After uninstall, `http://127.0.0.1:9247/health` must fail to connect.
 
 ## Troubleshooting
 
@@ -360,6 +527,17 @@ No automatic updater is implemented in this release.
 
 Application version is `package.json` → exposed via `GET /version` and `GET /health`.
 
+## Branding
+
+| File | Use |
+|------|-----|
+| [`assets/logo.png`](assets/logo.png) | WEBAPPNOVA brand logo (status page, README) |
+| [`assets/icon.png`](assets/icon.png) / [`assets/favicon.png`](assets/favicon.png) | App icon / favicon |
+| [`assets/app-icon.ico`](assets/app-icon.ico) | Windows installer & shortcuts |
+| [`assets/app-icon-512.png`](assets/app-icon-512.png) | High-res app icon |
+
 ## License
 
-Private — YourPOS internal use.
+Proprietary — see [`LICENSE`](LICENSE).
+
+Copyright (c) 2026 WEBAPPNOVA LLP. All rights reserved. Not open source; for authorized YourPOS installations only.

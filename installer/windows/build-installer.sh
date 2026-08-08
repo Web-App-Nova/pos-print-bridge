@@ -34,7 +34,7 @@ EOF
 fi
 
 cat > "$OUT/README.txt" <<EOF
-YourPOS Printer Agent — Windows release payload
+POS Printer Agent — Windows release payload
 ==============================================
 
 On a Windows build machine:
@@ -43,7 +43,7 @@ On a Windows build machine:
 3. Install Inno Setup 6
 4. powershell -ExecutionPolicy Bypass -File installer\\windows\\build-installer.ps1
 
-Output: release\\windows\\YourPOS-Printer-Agent-Setup.exe
+Output: release\\windows\\POS-Printer-Agent-Setup.exe
 EOF
 
 echo "Windows payload staged at $STAGE"

@@ -111,7 +111,7 @@ for _ in $(seq 1 15); do
 done
 
 if [[ "$ok" -eq 1 ]]; then
-  echo "YourPOS Printer Agent installed and running at http://127.0.0.1:9247"
+  echo "POS Printer Agent installed and running at http://127.0.0.1:9247"
 else
   echo "WARNING: Agent installed but health check pending. Logs: $LOG_DIR"
 fi

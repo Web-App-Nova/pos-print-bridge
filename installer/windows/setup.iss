@@ -1,9 +1,9 @@
-; Inno Setup script — YourPOS Printer Agent
+; Inno Setup script — POS Printer Agent
 ; Requires: Inno Setup 6+, release/bin/win-x64/ payload, nssm.exe in installer/windows/vendor/
 
-#define MyAppName "YourPOS Printer Agent"
+#define MyAppName "POS Printer Agent"
 #define MyAppVersion "1.1.0"
-#define MyAppPublisher "YourPOS"
+#define MyAppPublisher "WEBAPPNOVA LLP"
 #define MyServiceName "POSPrintBridge"
 
 [Setup]
@@ -11,17 +11,20 @@ AppId={{A7C3E9D2-4F81-4B2A-9C10-POSPRINTBRIDGE}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\YourPOS Printer Agent
+AppCopyright=Copyright (C) 2026 WEBAPPNOVA LLP
+DefaultDirName={autopf}\POS Printer Agent
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+LicenseFile=..\..\LICENSE
+SetupIconFile=..\..\assets\app-icon.ico
 OutputDir=..\..\release\windows
-OutputBaseFilename=YourPOS-Printer-Agent-Setup
+OutputBaseFilename=POS-Printer-Agent-Setup
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
-UninstallDisplayIcon={app}\node.exe
+UninstallDisplayIcon={app}\assets\app-icon.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

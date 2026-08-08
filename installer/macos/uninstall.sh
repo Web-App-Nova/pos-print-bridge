@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clean uninstall of YourPOS Printer Agent (macOS)
+# Clean uninstall of POS Printer Agent (macOS)
 set -euo pipefail
 
 LABEL="com.pos.print-bridge"
@@ -28,4 +28,4 @@ fi
 # Forget pkg receipt if present
 sudo pkgutil --forget "$LABEL" 2>/dev/null || true
 
-echo "YourPOS Printer Agent uninstalled."
+echo "POS Printer Agent uninstalled."

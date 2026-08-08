@@ -205,6 +205,12 @@ for (const target of targets) {
   );
 
   copyFileSync(path.join(root, 'package.json'), path.join(outDir, 'package.json'));
+  copyFileSync(path.join(root, 'LICENSE'), path.join(outDir, 'LICENSE'));
+  const assetsSrc = path.join(root, 'assets');
+  if (existsSync(assetsSrc)) {
+    cpSync(assetsSrc, path.join(outDir, 'assets'), { recursive: true });
+    cpSync(assetsSrc, path.join(outDir, 'app', 'assets'), { recursive: true });
+  }
   writeFileSync(path.join(outDir, 'VERSION'), `${version}\n`, 'utf8');
   console.log(`[package] Ready: ${outDir}`);
 }
